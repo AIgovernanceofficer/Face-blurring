@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Blurring 😎</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#18171c;
+    --panel:#232229;
+    --panel-border:#34323b;
+    --accent:#e5572e;
+    --accent-soft:rgba(229,87,46,.16);
+    --text:#f4efe6;
+    --muted:#9b98a3;
+    --good:#7fae8e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:20px 14px 60px;
+  }
+  .wrap{max-width:520px;width:100%;}
+  header{margin-bottom:18px;}
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:1.7rem;
+    margin:0 0 4px;
+    letter-spacing:.01em;
+  }
+  .tagline{color:var(--muted);font-size:.92rem;line-height:1.4;margin:0;}
+
+  .notice{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-left:3px solid var(--accent);
+    border-radius:6px;
+    padding:10px 12px;
+    font-size:.82rem;
+    color:var(--muted);
+    line-height:1.5;
+    margin:14px 0 18px;
+  }
+  .notice b{color:var(--text);}
+
+  /* viewfinder frame */
+  .frame{
+    position:relative;
+    border-radius:10px;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    overflow:hidden;
+    min-height:220px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .corner{
+    position:absolute;
+    width:22px;height:22px;
+    border:2.5px solid var(--accent);
+    z-index:3;
+    opacity:.85;
+    pointer-events:none;
+  }
+  .corner.tl{top:8px;left:8px;border-right:none;border-bottom:none;border-radius:4px 0 0 0;}
+  .corner.tr{top:8px;right:8px;border-left:none;border-bottom:none;border-radius:0 4px 0 0;}
+  .corner.bl{bottom:8px;left:8px;border-right:none;border-top:none;border-radius:0 0 0 4px;}
+  .corner.br{bottom:8px;right:8px;border-left:none;border-top:none;border-radius:0 0 4px 0;}
+
+  .dropzone{
+    width:100%;
+    padding:40px 20px;
+    text-align:center;
+    cursor:pointer;
+    color:var(--muted);
+  }
+  .dropzone .icon{font-size:2.2rem;display:block;margin-bottom:10px;}
+  .dropzone strong{color:var(--text);}
+  .dropzone.drag{background:var(--accent-soft);}
+
+  .canvas-stage{
+    position:relative;
+    width:100%;
+    display:none;
+    line-height:0;
+  }
+  .canvas-stage.active{display:block;}
+  canvas{display:block;width:100%;height:auto;touch-action:none;}
+  #overlay{position:absolute;top:0;left:0;}
+
+  /* scanline while detecting */
+  .scanline{
+    position:absolute;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);
+    box-shadow:0 0 10px var(--accent);
+    top:0; opacity:0; pointer-events:none; z-index:4;
+  }
+  .scanline.run{
+    animation:scan 1.1s linear infinite;
+    opacity:1;
+  }
+  @keyframes scan{
+    0%{top:0;}
+    100%{top:100%;}
+  }
+
+  .status{
+    margin:12px 0 4px;
+    font-size:.85rem;
+    color:var(--muted);
+    min-height:1.2em;
+  }
+  .status .num{color:var(--good);font-weight:600;}
+
+  .controls{
+    margin-top:14px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .slider-row{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:8px;
+    padding:10px 14px;
+  }
+  .slider-row label{
+    display:flex;
+    justify-content:space-between;
+    font-size:.85rem;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  .slider-row label span.val{color:var(--text);font-weight:600;}
+  input[type=range]{
+    width:100%;
+    accent-color:var(--accent);
+  }
+
+  .btn-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  button{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:.85rem;
+    border-radius:7px;
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    color:var(--text);
+    padding:10px 14px;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  button:hover{border-color:var(--accent);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#1c1411;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.toggle.on{
+    border-color:var(--accent);
+    background:var(--accent-soft);
+  }
+
+  .hint{font-size:.78rem;color:var(--muted);margin-top:2px;}
+
+  footer{
+    margin-top:24px;
+    font-size:.75rem;
+    color:var(--muted);
+    line-height:1.6;
+    border-top:1px solid var(--panel-border);
+    padding-top:12px;
+  }
+
+  /* loading state */
+  .loading{
+    color:var(--muted);
+    font-size:.85rem;
+    text-align:center;
+    padding:40px 20px;
+  }
+  .loading.error{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Face Blurring 😎</h1>
+    <p class="tagline">Maak gezichten op een foto automatisch onherkenbaar. Alles gebeurt lokaal in je browser.</p>
+  </header>
+
+  <div class="notice">
+    <b>Privacy:</b> deze app stuurt je foto nergens naartoe — alle gezichtsherkenning en bewerking gebeurt direct op je eigen toestel. Controleer het resultaat altijd zelf voordat je een foto deelt; dit is geen officiële privacy- of beveiligingstool.
+  </div>
+
+  <div class="frame">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <div id="dropzone" class="dropzone">
+      <span class="icon">📷</span>
+      <div><strong>Tik om een foto te kiezen</strong></div>
+      <div style="margin-top:4px;font-size:.85rem;">of sleep een afbeelding hierheen</div>
+      <div id="modelStatus" class="hint" style="margin-top:14px;">Modellen laden…</div>
+    </div>
+
+    <div class="canvas-stage" id="stage">
+      <div class="scanline" id="scanline"></div>
+      <canvas id="canvas"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" style="display:none;">
+
+  <div class="status" id="status"></div>
+
+  <div class="controls" id="controls" style="display:none;">
+
+    <div class="slider-row">
+      <label>Sterkte van de vervaging <span class="val" id="blurVal">22 px</span></label>
+      <input type="range" id="blurRange" min="6" max="50" value="22">
+    </div>
+
+    <div class="slider-row">
+      <label>Gebied rond gezicht <span class="val" id="padVal">35%</span></label>
+      <input type="range" id="padRange" min="0" max="100" value="35">
+    </div>
+
+    <div class="btn-row">
+      <button id="redetectBtn">🔄 Detecteer opnieuw</button>
+      <button id="manualBtn" class="toggle">✏️ Zelf gezicht aanwijzen</button>
+      <button id="clearBtn">🧹 Alles wissen</button>
+    </div>
+    <div class="hint" id="manualHint" style="display:none;">Sleep een rechthoek over een gezicht dat niet herkend werd.</div>
+
+    <div class="btn-row">
+      <button id="newBtn">📷 Andere foto</button>
+      <button id="downloadBtn" class="primary" style="margin-left:auto;">⬇️ Download resultaat</button>
+    </div>
+
+  </div>
+
+  <footer>
+    Gezichtsherkenning draait via een open-source model (face-api.js) dat eenmalig wordt geladen vanaf een CDN. Daarna verwerkt je browser de afbeelding zelf, zonder dat de foto het apparaat verlaat. Werkt het bij een foto niet goed (bijv. profielfoto's, kleine of verre gezichten)? Gebruik dan "Zelf gezicht aanwijzen" om handmatig een gebied te markeren.
+  </footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+(function(){
+  const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+  const MAX_DIM = 1600;
+
+  const dropzone = document.getElementById('dropzone');
+  const modelStatus = document.getElementById('modelStatus');
+  const fileInput = document.getElementById('fileInput');
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('canvas');
+  const overlay = document.getElementById('overlay');
+  const scanline = document.getElementById('scanline');
+  const statusEl = document.getElementById('status');
+  const controls = document.getElementById('controls');
+
+  const blurRange = document.getElementById('blurRange');
+  const blurVal = document.getElementById('blurVal');
+  const padRange = document.getElementById('padRange');
+  const padVal = document.getElementById('padVal');
+
+  const redetectBtn = document.getElementById('redetectBtn');
+  const manualBtn = document.getElementById('manualBtn');
+  const manualHint = document.getElementById('manualHint');
+  const clearBtn = document.getElementById('clearBtn');
+  const newBtn = document.getElementById('newBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  const ctx = canvas.getContext('2d');
+  const overlayCtx = overlay.getContext('2d');
+
+  let sourceCanvas = document.createElement('canvas');
+  let sourceCtx = sourceCanvas.getContext('2d');
+
+  let boxes = []; // {x,y,w,h, manual:bool}
+  let manualMode = false;
+  let modelsReady = false;
+  let currentFileType = 'image/png';
+  let currentFileName = 'foto';
+
+  // ---------- Model loading ----------
+  faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
+    .then(()=>{
+      modelsReady = true;
+      modelStatus.textContent = 'Klaar — tik om een foto te kiezen';
+    })
+    .catch(()=>{
+      modelStatus.textContent = '⚠️ Kon herkenningsmodel niet laden (check internetverbinding). Je kunt nog wel handmatig gezichten markeren.';
+    });
+
+  // ---------- File handling ----------
+  dropzone.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', e=>{
+    if(e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+  });
+  ['dragenter','dragover'].forEach(ev=>{
+    dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+  });
+  ['dragleave','drop'].forEach(ev=>{
+    dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
+  });
+  dropzone.addEventListener('drop', e=>{
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  newBtn.addEventListener('click', ()=>{
+    stage.classList.remove('active');
+    dropzone.style.display = 'block';
+    controls.style.display = 'none';
+    statusEl.textContent = '';
+    boxes = [];
+    fileInput.value = '';
+  });
+
+  function handleFile(file){
+    if(!file.type.startsWith('image/')) return;
+    currentFileType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    currentFileName = (file.name || 'foto').replace(/\.[^.]+$/, '');
+
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=> setupCanvas(img);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function setupCanvas(img){
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if(Math.max(w,h) > MAX_DIM){
+      const scale = MAX_DIM / Math.max(w,h);
+      w = Math.round(w*scale);
+      h = Math.round(h*scale);
+    }
+    canvas.width = w; canvas.height = h;
+    overlay.width = w; overlay.height = h;
+    sourceCanvas.width = w; sourceCanvas.height = h;
+
+    sourceCtx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(sourceCanvas, 0, 0);
+
+    dropzone.style.display = 'none';
+    stage.classList.add('active');
+    controls.style.display = 'flex';
+    boxes = [];
+
+    if(modelsReady){
+      detectFaces();
+    } else {
+      statusEl.innerHTML = 'Model nog niet geladen — gebruik "Zelf gezicht aanwijzen".';
+      render();
+    }
+  }
+
+  // ---------- Detection ----------
+  async function detectFaces(){
+    scanline.classList.add('run');
+    statusEl.textContent = 'Gezichten zoeken…';
+    await new Promise(r=>setTimeout(r, 30)); // let UI paint
+
+    try{
+      const results = await faceapi.detectAllFaces(
+        sourceCanvas,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 })
+      );
+      boxes = boxes.filter(b=>b.manual); // keep manual ones, replace auto ones
+      results.forEach(r=>{
+        boxes.push({ x:r.box.x, y:r.box.y, w:r.box.width, h:r.box.height, manual:false });
+      });
+    }catch(err){
+      console.error(err);
+    }
+
+    scanline.classList.remove('run');
+    updateStatus();
+    render();
+  }
+
+  function updateStatus(){
+    const auto = boxes.filter(b=>!b.manual).length;
+    const manual = boxes.filter(b=>b.manual).length;
+    if(boxes.length === 0){
+      statusEl.innerHTML = 'Geen gezichten gevonden. Gebruik "Zelf gezicht aanwijzen" indien nodig.';
+    } else {
+      let parts = [];
+      if(auto) parts.push(`<span class="num">${auto}</span> automatisch gevonden`);
+      if(manual) parts.push(`<span class="num">${manual}</span> handmatig toegevoegd`);
+      statusEl.innerHTML = parts.join(', ');
+    }
+  }
+
+  redetectBtn.addEventListener('click', ()=>{
+    if(modelsReady) detectFaces();
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    boxes = [];
+    updateStatus();
+    render();
+  });
+
+  // ---------- Rendering / pixelation ----------
+  function render(){
+    ctx.drawImage(sourceCanvas, 0, 0);
+    const blockSize = parseInt(blurRange.value, 10);
+    const padPct = parseInt(padRange.value, 10) / 100;
+
+    boxes.forEach(b=>{
+      const padX = b.w * padPct * 0.5;
+      const padY = b.h * padPct * 0.5;
+      const x = Math.max(0, Math.floor(b.x - padX));
+      const y = Math.max(0, Math.floor(b.y - padY));
+      const w = Math.min(canvas.width - x, Math.ceil(b.w + padX*2));
+      const h = Math.min(canvas.height - y, Math.ceil(b.h + padY*2));
+      if(w > 0 && h > 0) pixelateRegion(x, y, w, h, blockSize);
+    });
+
+    overlayCtx.clearRect(0,0,overlay.width,overlay.height);
+  }
+
+  function pixelateRegion(sx, sy, sw, sh, blockSize){
+    const w = Math.max(1, Math.round(sw / blockSize));
+    const h = Math.max(1, Math.round(sh / blockSize));
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, w, h);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, 0, 0, w, h, sx, sy, sw, sh);
+    ctx.restore();
+  }
+
+  blurRange.addEventListener('input', ()=>{
+    blurVal.textContent = blurRange.value + ' px';
+    if(stage.classList.contains('active')) render();
+  });
+  padRange.addEventListener('input', ()=>{
+    padVal.textContent = padRange.value + '%';
+    if(stage.classList.contains('active')) render();
+  });
+
+  // ---------- Manual box drawing ----------
+  manualBtn.addEventListener('click', ()=>{
+    manualMode = !manualMode;
+    manualBtn.classList.toggle('on', manualMode);
+    manualHint.style.display = manualMode ? 'block' : 'none';
+  });
+
+  let drawing = false, startX=0, startY=0;
+
+  function getCanvasCoords(evt){
+    const rect = overlay.getBoundingClientRect();
+    const point = evt.touches ? evt.touches[0] : evt;
+    const scaleX = overlay.width / rect.width;
+    const scaleY = overlay.height / rect.height;
+    return {
+      x: (point.clientX - rect.left) * scaleX,
+      y: (point.clientY - rect.top) * scaleY
+    };
+  }
+
+  function pointerDown(evt){
+    if(!manualMode) return;
+    evt.preventDefault();
+    const p = getCanvasCoords(evt);
+    drawing = true;
+    startX = p.x; startY = p.y;
+  }
+  function pointerMove(evt){
+    if(!manualMode || !drawing) return;
+    evt.preventDefault();
+    const p = getCanvasCoords(evt);
+    overlayCtx.clearRect(0,0,overlay.width,overlay.height);
+    overlayCtx.strokeStyle = '#e5572e';
+    overlayCtx.lineWidth = Math.max(2, overlay.width*0.004);
+    overlayCtx.setLineDash([8,6]);
+    overlayCtx.strokeRect(
+      Math.min(startX,p.x), Math.min(startY,p.y),
+      Math.abs(p.x-startX), Math.abs(p.y-startY)
+    );
+  }
+  function pointerUp(evt){
+    if(!manualMode || !drawing) return;
+    drawing = false;
+    const p = getCanvasCoords(evt.changedTouches ? evt.changedTouches[0] : evt);
+    const x = Math.min(startX,p.x), y = Math.min(startY,p.y);
+    const w = Math.abs(p.x-startX), h = Math.abs(p.y-startY);
+    overlayCtx.clearRect(0,0,overlay.width,overlay.height);
+    if(w > 6 && h > 6){
+      boxes.push({x,y,w,h,manual:true});
+      updateStatus();
+      render();
+    }
+  }
+
+  overlay.addEventListener('mousedown', pointerDown);
+  overlay.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  overlay.addEventListener('touchstart', pointerDown, {passive:false});
+  overlay.addEventListener('touchmove', pointerMove, {passive:false});
+  overlay.addEventListener('touchend', pointerUp);
+
+  // ---------- Download ----------
+  downloadBtn.addEventListener('click', ()=>{
+    const ext = currentFileType === 'image/png' ? 'png' : 'jpg';
+    canvas.toBlob(blob=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentFileName}-geblurd.${ext}`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    }, currentFileType, 0.92);
+  });
+
+})();
+</script>
+</body>
+</html>
